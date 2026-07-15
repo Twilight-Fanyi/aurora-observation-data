@@ -1,0 +1,86 @@
+name: Publish Aurora Data
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/10 * * * *"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: aurora-pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: data-pipeline/package-lock.json
+
+      - name: Install data pipeline
+        run: npm ci
+        working-directory: data-pipeline
+
+      - name: Test data pipeline
+        run: npm test
+        working-directory: data-pipeline
+
+      - name: Recover current Pages artifact
+        run: |
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          BASE_URL="https://${GITHUB_REPOSITORY_OWNER}.github.io/${REPO_NAME}/v1"
+          mkdir -p previous/v1
+          for FILE in catalog.json manifest.json snapshot.json; do
+            curl --fail --silent --show-error \
+              "${BASE_URL}/${FILE}" -o "previous/v1/${FILE}" || \
+              rm -f "previous/v1/${FILE}"
+          done
+
+      - name: Build current snapshot
+        id: build
+        run: |
+          RESULT=$(node src/cli.mjs \
+            --output ../public/v1 \
+            --previous ../previous/v1)
+          printf '%s\n' "$RESULT"
+          STATUS=$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).status)' "$RESULT")
+          printf 'status=%s\n' "$STATUS" >> "$GITHUB_OUTPUT"
+        working-directory: data-pipeline
+
+      - name: Restore last valid artifact after upstream failure
+        if: steps.build.outputs.status == 'kept-previous'
+        run: |
+          mkdir -p public/v1
+          cp previous/v1/catalog.json public/v1/catalog.json
+          cp previous/v1/manifest.json public/v1/manifest.json
+          cp previous/v1/snapshot.json public/v1/snapshot.json
+
+      - name: Verify deployable artifact
+        run: npm run verify
+        working-directory: data-pipeline
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
