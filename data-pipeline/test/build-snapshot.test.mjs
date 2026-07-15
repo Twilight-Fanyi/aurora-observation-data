@@ -5,11 +5,11 @@ import { buildSnapshot } from '../src/build-snapshot.mjs';
 import { validateSnapshot } from '../src/contracts.mjs';
 import { makeNormalizedInput } from './fixture-data.mjs';
 
-test('builds a schema-valid 12-location snapshot with 12 future hours', () => {
+test('builds a schema-valid 50-location snapshot with 12 future hours', () => {
   const now = new Date('2026-01-15T12:10:00Z');
   const snapshot = buildSnapshot(makeNormalizedInput(now), now);
   assert.doesNotThrow(() => validateSnapshot(snapshot));
-  assert.equal(snapshot.locations.length, 12);
+  assert.equal(snapshot.locations.length, 50);
   for (const location of snapshot.locations) {
     assert.equal(location.hourly.length, 12);
     assert.ok(location.current.score >= 0 && location.current.score <= 100);

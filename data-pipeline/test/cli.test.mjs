@@ -104,7 +104,7 @@ test('publishes a validated atomic artifact with exact hash and freshness times'
     const snapshot = JSON.parse(files.snapshot);
 
     assert.equal(result.status, 'published');
-    assert.equal(snapshot.locations.length, 12);
+    assert.equal(snapshot.locations.length, 50);
     assert.equal(manifest.generatedAt, now.toISOString());
     assert.equal(manifest.staleAt, '2026-01-15T12:30:00.000Z');
     assert.equal(manifest.expiresAt, '2026-01-15T18:10:00.000Z');
@@ -112,7 +112,7 @@ test('publishes a validated atomic artifact with exact hash and freshness times'
       manifest.snapshotSha256,
       createHash('sha256').update(files.snapshot).digest('hex')
     );
-    assert.ok(Buffer.byteLength(files.snapshot) < 100000);
+    assert.ok(Buffer.byteLength(files.snapshot) < 256 * 1024);
     await assert.doesNotReject(() => verifyPublishedArtifacts(outputDir));
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -21,7 +21,7 @@ import { fetchUpstreams } from './upstreams.mjs';
 
 const MINUTE_MS = 60000;
 const HOUR_MS = 3600000;
-const MAX_SNAPSHOT_BYTES = 100000;
+const MAX_SNAPSHOT_BYTES = 256 * 1024;
 const DEFAULT_OUTPUT_DIR = fileURLToPath(new URL('../../public/v1', import.meta.url));
 
 const SOURCES = Object.freeze([
@@ -55,7 +55,7 @@ function parseJson(text, label) {
 
 function validatePublicationTexts(catalogText, manifestText, snapshotText) {
   if (Buffer.byteLength(snapshotText) >= MAX_SNAPSHOT_BYTES) {
-    throw new Error('snapshot must be smaller than 100000 bytes');
+    throw new Error('snapshot must be smaller than 262144 bytes');
   }
   const catalog = validateCatalog(parseJson(catalogText, 'catalog'));
   const manifest = validateManifest(parseJson(manifestText, 'manifest'));
