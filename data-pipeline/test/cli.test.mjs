@@ -49,7 +49,25 @@ function fakeFetch(now, malformedWeather = false) {
   const raw = rawResponses(now, malformedWeather);
   return async (url) => {
     const key = String(url);
-    const value = key.startsWith(URLS.weather) ? raw.weather : raw.responses.get(key);
+    if (key.startsWith(URLS.weather)) {
+      const requested = new URL(key).searchParams.get('latitude')
+        .split(',').map(Number);
+      const rows = requested.map((latitude) => {
+        const locationIndex = LOCATIONS.findIndex(
+          (location) => location.latitude === latitude
+        );
+        if (locationIndex < 0) {
+          throw new Error('test requested an unknown latitude');
+        }
+        return raw.weather[locationIndex];
+      });
+      return new Response(JSON.stringify(rows), {
+        status: malformedWeather ? 503 : 200,
+        headers: { 'content-type': 'application/json' }
+      });
+    }
+
+    const value = raw.responses.get(key);
     if (value === undefined) {
       return new Response('not found', { status: 404 });
     }
@@ -133,7 +151,7 @@ test('does not expose partial files when the first publication fails', async () 
       now,
       outputDir,
       previousDir: outputDir
-    }), /weather response/);
+    }), /HTTP 503/);
     await assert.rejects(() => readdir(outputDir), /ENOENT/);
   } finally {
     await rm(root, { recursive: true, force: true });

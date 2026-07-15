@@ -34,7 +34,23 @@ function lastByTime(values, timeField) {
     .at(-1);
 }
 
-export function buildWeatherUrl(locations = LOCATIONS) {
+export const WEATHER_BATCH_SIZE = 10;
+
+export function weatherBatches(
+  locations = LOCATIONS,
+  batchSize = WEATHER_BATCH_SIZE
+) {
+  if (!Number.isInteger(batchSize) || batchSize <= 0) {
+    throw new Error('weather batch size must be a positive integer');
+  }
+  const batches = [];
+  for (let index = 0; index < locations.length; index += batchSize) {
+    batches.push(locations.slice(index, index + batchSize));
+  }
+  return batches;
+}
+
+export function buildWeatherUrl(locations) {
   const url = new URL(URLS.weather);
   url.searchParams.set('latitude', locations.map((location) => location.latitude).join(','));
   url.searchParams.set('longitude', locations.map((location) => location.longitude).join(','));
@@ -42,6 +58,10 @@ export function buildWeatherUrl(locations = LOCATIONS) {
   url.searchParams.set('timezone', 'auto');
   url.searchParams.set('forecast_days', '2');
   return url.toString();
+}
+
+export function buildWeatherUrls(locations = LOCATIONS) {
+  return weatherBatches(locations).map((batch) => buildWeatherUrl(batch));
 }
 
 export function parseCurrentKp(raw) {
@@ -214,6 +234,20 @@ async function fetchJson(fetchFn, url) {
   throw lastError;
 }
 
+export async function fetchWeather(fetchFn = fetch, locations = LOCATIONS) {
+  const batches = weatherBatches(locations);
+  const rawBatches = await Promise.all(
+    batches.map((batch) => fetchJson(fetchFn, buildWeatherUrl(batch)))
+  );
+  const weather = rawBatches.flatMap((raw, index) =>
+    parseWeather(raw, batches[index]));
+  if (weather.length !== locations.length ||
+    weather.some((item, index) => item.id !== locations[index].id)) {
+    throw new Error('weather batches do not match approved catalog order');
+  }
+  return weather;
+}
+
 export async function fetchUpstreams(fetchFn = fetch, now = new Date()) {
   const [
     currentKpRaw,
@@ -221,14 +255,14 @@ export async function fetchUpstreams(fetchFn = fetch, now = new Date()) {
     bzRaw,
     speedRaw,
     ovationRaw,
-    weatherRaw
+    weather
   ] = await Promise.all([
     fetchJson(fetchFn, URLS.kpCurrent),
     fetchJson(fetchFn, URLS.kpForecast),
     fetchJson(fetchFn, URLS.bz),
     fetchJson(fetchFn, URLS.speed),
     fetchJson(fetchFn, URLS.ovation),
-    fetchJson(fetchFn, buildWeatherUrl())
+    fetchWeather(fetchFn)
   ]);
   return {
     fetchedAt: now.toISOString(),
@@ -237,6 +271,6 @@ export async function fetchUpstreams(fetchFn = fetch, now = new Date()) {
     bz: parseBz(bzRaw),
     solarWind: parseSolarWind(speedRaw),
     ovation: parseOvation(ovationRaw),
-    weather: parseWeather(weatherRaw)
+    weather
   };
 }
