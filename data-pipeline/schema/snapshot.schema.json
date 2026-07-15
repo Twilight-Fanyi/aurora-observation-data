@@ -19,8 +19,8 @@
     },
     "locations": {
       "type": "array",
-      "minItems": 12,
-      "maxItems": 12,
+      "minItems": 50,
+      "maxItems": 50,
       "items": { "$ref": "#/$defs/location" }
     }
   },
