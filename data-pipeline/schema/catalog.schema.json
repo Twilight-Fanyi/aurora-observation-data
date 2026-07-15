@@ -1,0 +1,57 @@
+{
+  "$id": "https://aurora.local/schema/catalog.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "sources", "locations"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "sources": {
+      "type": "array",
+      "minItems": 2,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "url"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "url": { "type": "string", "pattern": "^https://" }
+        }
+      }
+    },
+    "locations": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "displayName",
+          "countryCode",
+          "latitude",
+          "longitude",
+          "timeZone",
+          "referenceKp",
+          "sceneAssetId",
+          "hemisphere",
+          "sortOrder"
+        ],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "displayName": { "type": "string", "minLength": 1 },
+          "countryCode": { "type": "string", "pattern": "^[A-Z]{2}$" },
+          "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+          "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+          "timeZone": { "type": "string", "pattern": "^[A-Za-z_]+/[A-Za-z_]+$" },
+          "referenceKp": { "type": "number", "minimum": 0, "maximum": 9 },
+          "sceneAssetId": { "type": "string", "minLength": 1 },
+          "hemisphere": { "enum": ["north", "south"] },
+          "sortOrder": { "type": "integer", "minimum": 0, "maximum": 11 }
+        }
+      }
+    }
+  }
+}

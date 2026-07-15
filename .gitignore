@@ -1,0 +1,7 @@
+node_modules/
+public/
+previous/
+.DS_Store
+npm-debug.log*
+*.backup-*
+*.staging-*

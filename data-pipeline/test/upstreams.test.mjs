@@ -1,0 +1,119 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import { LOCATIONS } from '../src/catalog.mjs';
+import {
+  buildWeatherUrl,
+  nearestOvation,
+  parseBz,
+  parseCurrentKp,
+  parseKpForecast,
+  parseOvation,
+  parseSolarWind,
+  parseWeather
+} from '../src/upstreams.mjs';
+
+test('builds one Open-Meteo request for all approved locations', () => {
+  const url = new URL(buildWeatherUrl());
+  assert.equal(url.hostname, 'api.open-meteo.com');
+  assert.equal(url.searchParams.get('latitude').split(',').length, 12);
+  assert.equal(url.searchParams.get('longitude').split(',').length, 12);
+  assert.equal(url.searchParams.get('hourly'), 'cloud_cover,visibility');
+  assert.equal(url.searchParams.get('forecast_days'), '2');
+});
+
+test('normalizes NOAA current, forecast, solar wind, and OVATION products', () => {
+  assert.deepEqual(parseCurrentKp([
+    { time_tag: '2026-07-14T12:00:00Z', Kp: '7.33' }
+  ]), {
+    timeUtc: '2026-07-14T12:00:00.000Z',
+    intervalEndUtc: '2026-07-14T15:00:00.000Z',
+    value: 7.33
+  });
+
+  assert.deepEqual(parseKpForecast([
+    {
+      time_tag: '2026-07-14T15:00:00Z',
+      kp: '8.00',
+      observed: 'predicted',
+      noaa_scale: 'G4'
+    }
+  ]), [{
+    timeUtc: '2026-07-14T15:00:00.000Z',
+    value: 8
+  }]);
+
+  assert.deepEqual(parseBz([
+    { time_tag: '2026-07-14T13:25:00Z', bt: 10, bz_gsm: -9 }
+  ]), {
+    timeUtc: '2026-07-14T13:25:00.000Z',
+    value: -9
+  });
+
+  assert.deepEqual(parseSolarWind([
+    { time_tag: '2026-07-14T13:25:00Z', proton_speed: 520 }
+  ]), {
+    timeUtc: '2026-07-14T13:25:00.000Z',
+    valueKmS: 520
+  });
+
+  assert.deepEqual(parseOvation({
+    'Observation Time': '2026-07-14T13:20:00Z',
+    'Forecast Time': '2026-07-14T13:40:00Z',
+    coordinates: [[122, 53, 32]]
+  }), {
+    observationTime: '2026-07-14T13:20:00.000Z',
+    forecastTime: '2026-07-14T13:40:00.000Z',
+    grid: [[122, 53, 32]]
+  });
+});
+
+test('treats timezone-less NOAA product timestamps as UTC', () => {
+  const previousTimeZone = process.env.TZ;
+  process.env.TZ = 'Asia/Shanghai';
+  try {
+    assert.deepEqual(parseCurrentKp([
+      { time_tag: '2026-07-14T09:00:00', Kp: '2.00' }
+    ]), {
+      timeUtc: '2026-07-14T09:00:00.000Z',
+      intervalEndUtc: '2026-07-14T12:00:00.000Z',
+      value: 2
+    });
+  } finally {
+    if (previousTimeZone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = previousTimeZone;
+    }
+  }
+});
+
+test('normalizes batched local weather timestamps to UTC', () => {
+  const raw = LOCATIONS.map((location) => ({
+    timezone: location.timeZone,
+    utc_offset_seconds: 3600,
+    hourly: {
+      time: ['2026-07-14T14:00'],
+      cloud_cover: [13],
+      visibility: [25000]
+    }
+  }));
+  const weather = parseWeather(raw);
+  assert.equal(weather.length, 12);
+  assert.equal(weather[0].id, 'mohe-beiji');
+  assert.deepEqual(weather[0].hourly[0], {
+    timeUtc: '2026-07-14T13:00:00.000Z',
+    localTime: '14:00',
+    cloudCover: 13,
+    visibilityKm: 25
+  });
+});
+
+test('finds nearest OVATION points across the antimeridian', () => {
+  const point = nearestOvation(
+    [[179, 65, 12], [-175, 65, 30]],
+    { latitude: 65, longitude: -180 }
+  );
+  assert.equal(point.aurora, 12);
+  assert.equal(point.distanceDegrees, 1);
+});

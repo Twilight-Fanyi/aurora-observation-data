@@ -1,0 +1,21 @@
+{
+  "$id": "https://aurora.local/schema/manifest.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "staleAt",
+    "expiresAt",
+    "snapshotSha256",
+    "snapshotPath"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "generatedAt": { "type": "string", "pattern": "Z$" },
+    "staleAt": { "type": "string", "pattern": "Z$" },
+    "expiresAt": { "type": "string", "pattern": "Z$" },
+    "snapshotSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "snapshotPath": { "const": "/v1/snapshot.json" }
+  }
+}
