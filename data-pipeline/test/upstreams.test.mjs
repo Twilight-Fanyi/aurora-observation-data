@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { LOCATIONS } from '../src/catalog.mjs';
+import { LOCATION_IDS, LOCATIONS } from '../src/catalog.mjs';
 import {
-  buildWeatherUrl,
+  WEATHER_BATCH_SIZE,
+  buildWeatherUrls,
+  fetchWeather,
   nearestOvation,
   parseBz,
   parseCurrentKp,
@@ -13,13 +15,79 @@ import {
   parseWeather
 } from '../src/upstreams.mjs';
 
-test('builds one Open-Meteo request for all approved locations', () => {
-  const url = new URL(buildWeatherUrl());
-  assert.equal(url.hostname, 'api.open-meteo.com');
-  assert.equal(url.searchParams.get('latitude').split(',').length, 12);
-  assert.equal(url.searchParams.get('longitude').split(',').length, 12);
-  assert.equal(url.searchParams.get('hourly'), 'cloud_cover,visibility');
-  assert.equal(url.searchParams.get('forecast_days'), '2');
+test('builds five Open-Meteo requests with ten ordered coordinates each', () => {
+  assert.equal(WEATHER_BATCH_SIZE, 10);
+  const urls = buildWeatherUrls();
+  assert.equal(urls.length, 5);
+  urls.forEach((value, batchIndex) => {
+    const url = new URL(value);
+    assert.equal(url.hostname, 'api.open-meteo.com');
+    const latitudes = url.searchParams.get('latitude').split(',').map(Number);
+    const longitudes = url.searchParams.get('longitude').split(',').map(Number);
+    assert.equal(latitudes.length, 10);
+    assert.equal(longitudes.length, 10);
+    assert.deepEqual(
+      latitudes,
+      LOCATIONS.slice(batchIndex * 10, batchIndex * 10 + 10)
+        .map((location) => location.latitude)
+    );
+    assert.deepEqual(
+      longitudes,
+      LOCATIONS.slice(batchIndex * 10, batchIndex * 10 + 10)
+        .map((location) => location.longitude)
+    );
+    assert.equal(url.searchParams.get('hourly'), 'cloud_cover,visibility');
+    assert.equal(url.searchParams.get('forecast_days'), '2');
+  });
+});
+
+test('merges weather batches back into exact catalog order', async () => {
+  const calls = [];
+  const weather = await fetchWeather(async (url) => {
+    calls.push(String(url));
+    const request = new URL(url);
+    const latitudes = request.searchParams.get('latitude').split(',').map(Number);
+    const rows = latitudes.map((latitude) => {
+      const location = LOCATIONS.find((candidate) => candidate.latitude === latitude);
+      return {
+        latitude: location.latitude + 0.2,
+        longitude: location.longitude - 0.2,
+        timezone: location.timeZone,
+        utc_offset_seconds: 0,
+        hourly: {
+          time: ['2026-01-15T12:00'],
+          cloud_cover: [10],
+          visibility: [30000]
+        }
+      };
+    });
+    return new Response(JSON.stringify(rows), { status: 200 });
+  });
+  assert.equal(calls.length, 5);
+  assert.deepEqual(weather.map((item) => item.id), LOCATION_IDS);
+});
+
+test('rejects weather batches whose response rows are swapped', async () => {
+  await assert.rejects(() => fetchWeather(async (url) => {
+    const request = new URL(url);
+    const latitudes = request.searchParams.get('latitude').split(',').map(Number);
+    const longitudes = request.searchParams.get('longitude').split(',').map(Number);
+    const rows = latitudes.map((latitude, index) => ({
+      latitude,
+      longitude: longitudes[index],
+      timezone: 'UTC',
+      utc_offset_seconds: 0,
+      hourly: {
+        time: ['2026-01-15T12:00'],
+        cloud_cover: [10],
+        visibility: [30000]
+      }
+    }));
+    if (latitudes[0] === LOCATIONS[0].latitude) {
+      [rows[0], rows[1]] = [rows[1], rows[0]];
+    }
+    return new Response(JSON.stringify(rows), { status: 200 });
+  }), /weather response coordinates do not match requested catalog order/);
 });
 
 test('normalizes NOAA current, forecast, solar wind, and OVATION products', () => {
@@ -99,7 +167,7 @@ test('normalizes batched local weather timestamps to UTC', () => {
     }
   }));
   const weather = parseWeather(raw);
-  assert.equal(weather.length, 12);
+  assert.equal(weather.length, 50);
   assert.equal(weather[0].id, 'mohe-beiji');
   assert.deepEqual(weather[0].hourly[0], {
     timeUtc: '2026-07-14T13:00:00.000Z',

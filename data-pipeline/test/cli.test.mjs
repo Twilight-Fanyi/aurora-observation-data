@@ -34,6 +34,8 @@ function rawResponses(now, malformedWeather = false) {
     }]
   ]);
   const weather = malformedWeather ? [] : input.weather.map((item, index) => ({
+    latitude: LOCATIONS[index].latitude,
+    longitude: LOCATIONS[index].longitude,
     timezone: LOCATIONS[index].timeZone,
     utc_offset_seconds: 0,
     hourly: {
@@ -49,7 +51,25 @@ function fakeFetch(now, malformedWeather = false) {
   const raw = rawResponses(now, malformedWeather);
   return async (url) => {
     const key = String(url);
-    const value = key.startsWith(URLS.weather) ? raw.weather : raw.responses.get(key);
+    if (key.startsWith(URLS.weather)) {
+      const requested = new URL(key).searchParams.get('latitude')
+        .split(',').map(Number);
+      const rows = requested.map((latitude) => {
+        const locationIndex = LOCATIONS.findIndex(
+          (location) => location.latitude === latitude
+        );
+        if (locationIndex < 0) {
+          throw new Error('test requested an unknown latitude');
+        }
+        return raw.weather[locationIndex];
+      });
+      return new Response(JSON.stringify(rows), {
+        status: malformedWeather ? 503 : 200,
+        headers: { 'content-type': 'application/json' }
+      });
+    }
+
+    const value = raw.responses.get(key);
     if (value === undefined) {
       return new Response('not found', { status: 404 });
     }
@@ -84,7 +104,7 @@ test('publishes a validated atomic artifact with exact hash and freshness times'
     const snapshot = JSON.parse(files.snapshot);
 
     assert.equal(result.status, 'published');
-    assert.equal(snapshot.locations.length, 12);
+    assert.equal(snapshot.locations.length, 50);
     assert.equal(manifest.generatedAt, now.toISOString());
     assert.equal(manifest.staleAt, '2026-01-15T12:30:00.000Z');
     assert.equal(manifest.expiresAt, '2026-01-15T18:10:00.000Z');
@@ -92,7 +112,7 @@ test('publishes a validated atomic artifact with exact hash and freshness times'
       manifest.snapshotSha256,
       createHash('sha256').update(files.snapshot).digest('hex')
     );
-    assert.ok(Buffer.byteLength(files.snapshot) < 100000);
+    assert.ok(Buffer.byteLength(files.snapshot) < 256 * 1024);
     await assert.doesNotReject(() => verifyPublishedArtifacts(outputDir));
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -133,7 +153,7 @@ test('does not expose partial files when the first publication fails', async () 
       now,
       outputDir,
       previousDir: outputDir
-    }), /weather response/);
+    }), /HTTP 503/);
     await assert.rejects(() => readdir(outputDir), /ENOENT/);
   } finally {
     await rm(root, { recursive: true, force: true });
