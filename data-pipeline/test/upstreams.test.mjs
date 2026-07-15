@@ -50,6 +50,8 @@ test('merges weather batches back into exact catalog order', async () => {
     const rows = latitudes.map((latitude) => {
       const location = LOCATIONS.find((candidate) => candidate.latitude === latitude);
       return {
+        latitude: location.latitude + 0.2,
+        longitude: location.longitude - 0.2,
         timezone: location.timeZone,
         utc_offset_seconds: 0,
         hourly: {
@@ -63,6 +65,29 @@ test('merges weather batches back into exact catalog order', async () => {
   });
   assert.equal(calls.length, 5);
   assert.deepEqual(weather.map((item) => item.id), LOCATION_IDS);
+});
+
+test('rejects weather batches whose response rows are swapped', async () => {
+  await assert.rejects(() => fetchWeather(async (url) => {
+    const request = new URL(url);
+    const latitudes = request.searchParams.get('latitude').split(',').map(Number);
+    const longitudes = request.searchParams.get('longitude').split(',').map(Number);
+    const rows = latitudes.map((latitude, index) => ({
+      latitude,
+      longitude: longitudes[index],
+      timezone: 'UTC',
+      utc_offset_seconds: 0,
+      hourly: {
+        time: ['2026-01-15T12:00'],
+        cloud_cover: [10],
+        visibility: [30000]
+      }
+    }));
+    if (latitudes[0] === LOCATIONS[0].latitude) {
+      [rows[0], rows[1]] = [rows[1], rows[0]];
+    }
+    return new Response(JSON.stringify(rows), { status: 200 });
+  }), /weather response coordinates do not match requested catalog order/);
 });
 
 test('normalizes NOAA current, forecast, solar wind, and OVATION products', () => {

@@ -35,6 +35,7 @@ function lastByTime(values, timeField) {
 }
 
 export const WEATHER_BATCH_SIZE = 10;
+const WEATHER_COORDINATE_TOLERANCE_DEGREES = 0.25;
 
 export function weatherBatches(
   locations = LOCATIONS,
@@ -62,6 +63,21 @@ export function buildWeatherUrl(locations) {
 
 export function buildWeatherUrls(locations = LOCATIONS) {
   return weatherBatches(locations).map((batch) => buildWeatherUrl(batch));
+}
+
+function weatherCoordinatesMatch(item, location) {
+  const latitude = Number(item?.latitude);
+  const longitude = Number(item?.longitude);
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+    !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    return false;
+  }
+  const latitudeDelta = Math.abs(latitude - location.latitude);
+  const longitudeDelta = Math.abs(
+    ((longitude - location.longitude + 540) % 360) - 180
+  );
+  return latitudeDelta <= WEATHER_COORDINATE_TOLERANCE_DEGREES &&
+    longitudeDelta <= WEATHER_COORDINATE_TOLERANCE_DEGREES;
 }
 
 export function parseCurrentKp(raw) {
@@ -239,6 +255,13 @@ export async function fetchWeather(fetchFn = fetch, locations = LOCATIONS) {
   const rawBatches = await Promise.all(
     batches.map((batch) => fetchJson(fetchFn, buildWeatherUrl(batch)))
   );
+  const coordinatesMatch = rawBatches.every((raw, batchIndex) =>
+    Array.isArray(raw) && raw.length === batches[batchIndex].length &&
+    raw.every((item, itemIndex) =>
+      weatherCoordinatesMatch(item, batches[batchIndex][itemIndex])));
+  if (!coordinatesMatch) {
+    throw new Error('weather response coordinates do not match requested catalog order');
+  }
   const weather = rawBatches.flatMap((raw, index) =>
     parseWeather(raw, batches[index]));
   if (weather.length !== locations.length ||

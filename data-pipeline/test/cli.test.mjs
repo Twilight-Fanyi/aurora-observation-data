@@ -34,6 +34,8 @@ function rawResponses(now, malformedWeather = false) {
     }]
   ]);
   const weather = malformedWeather ? [] : input.weather.map((item, index) => ({
+    latitude: LOCATIONS[index].latitude,
+    longitude: LOCATIONS[index].longitude,
     timezone: LOCATIONS[index].timeZone,
     utc_offset_seconds: 0,
     hourly: {
