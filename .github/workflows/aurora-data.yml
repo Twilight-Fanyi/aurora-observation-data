@@ -44,7 +44,7 @@ jobs:
           REPO_NAME="${GITHUB_REPOSITORY#*/}"
           BASE_URL="https://${GITHUB_REPOSITORY_OWNER}.github.io/${REPO_NAME}/v1"
           mkdir -p previous/v1
-          for FILE in catalog.json manifest.json snapshot.json; do
+          for FILE in catalog.json manifest.json snapshot.json weather.json; do
             curl --fail --silent --show-error \
               "${BASE_URL}/${FILE}" -o "previous/v1/${FILE}" || \
               rm -f "previous/v1/${FILE}"
@@ -68,6 +68,7 @@ jobs:
           cp previous/v1/catalog.json public/v1/catalog.json
           cp previous/v1/manifest.json public/v1/manifest.json
           cp previous/v1/snapshot.json public/v1/snapshot.json
+          cp previous/v1/weather.json public/v1/weather.json
 
       - name: Verify deployable artifact
         run: npm run verify

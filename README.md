@@ -1,6 +1,6 @@
 # Aurora Observation Data
 
-面向极光观测应用的免费、只读、来源可追溯的数据快照。仓库每 10 分钟从公开上游抓取空间天气与地面天气，为 50 个精选观测地点生成同一份版本化 JSON，并通过 GitHub Pages 发布。Open-Meteo 固定分为五批十坐标请求，任一批最终失败时保留上一份完整快照。
+面向极光观测应用的免费、只读、来源可追溯的数据快照。GitHub Actions 计划任务配置为每 10 分钟抓取 NOAA 空间天气，为 50 个精选观测地点生成同一份版本化 JSON，并通过 GitHub Pages 发布。Open-Meteo 地面天气最多每 15 分钟刷新一次，固定分为五批十坐标请求。
 
 ## 公开端点
 
@@ -9,6 +9,8 @@
 - `https://twilight-fanyi.github.io/aurora-observation-data/v1/snapshot.json`
 
 首次 GitHub Pages 部署完成后这些地址开始提供数据。客户端应先读取 `manifest.json`，检查 `staleAt`、`expiresAt` 和 `snapshotSha256`，再使用快照。
+
+`/v1/weather.json` 是生成端使用的内部天气缓存，不属于鸿蒙客户端 API 合约。缓存会校验 50 个地点的数量、顺序、时间和数值范围；Open-Meteo 刷新失败时可复用不超过 3 小时的缓存，超过 3 小时则保留上一份完整发布，避免混合新旧数据。
 
 ## 数据内容
 
@@ -36,7 +38,9 @@ npm run verify
 
 ## 隐私与成本
 
-流水线不接收或保存用户位置、设备标识、账号与个人资料，不需要 API Key。公开仓库使用 GitHub Actions 与 GitHub Pages；如果以后增加 Cloudflare，它只镜像并校验同一份 JSON，不维护第二套评分逻辑。
+流水线不接收或保存用户位置、设备标识、账号与个人资料，不需要 API Key。按 50 个地点、15 分钟刷新估算，Open-Meteo 计量约为每天 4,800 次、31 天月份 148,800 次，低于非商业免费层每天 10,000 次与每月 300,000 次的公开额度。Cloudflare 只镜像并校验客户端所需 JSON，不维护第二套评分逻辑。
+
+GitHub Actions 的 cron 是尽力调度，不等同于严格的 10 分钟 SLA；客户端仍应以清单时间戳判断新鲜度并使用本地缓存降级。
 
 ## 许可与署名
 
