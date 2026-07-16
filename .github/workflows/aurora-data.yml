@@ -1,9 +1,15 @@
 name: Publish Aurora Data
+run-name: Publish Aurora Data · ${{ inputs.dispatch_slot || 'hourly fallback' }}
 
 on:
   workflow_dispatch:
+    inputs:
+      dispatch_slot:
+        description: Cloudflare ten-minute UTC slot
+        required: false
+        type: string
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '37 * * * *'
 
 permissions:
   contents: read
