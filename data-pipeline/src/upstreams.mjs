@@ -271,29 +271,32 @@ export async function fetchWeather(fetchFn = fetch, locations = LOCATIONS) {
   return weather;
 }
 
-export async function fetchUpstreams(fetchFn = fetch, now = new Date()) {
-  const [
-    currentKpRaw,
-    kpForecastRaw,
-    bzRaw,
-    speedRaw,
-    ovationRaw,
-    weather
-  ] = await Promise.all([
+export async function fetchSpaceWeather(fetchFn = fetch) {
+  const [currentKpRaw, kpForecastRaw, bzRaw, speedRaw, ovationRaw] =
+    await Promise.all([
     fetchJson(fetchFn, URLS.kpCurrent),
     fetchJson(fetchFn, URLS.kpForecast),
     fetchJson(fetchFn, URLS.bz),
     fetchJson(fetchFn, URLS.speed),
-    fetchJson(fetchFn, URLS.ovation),
-    fetchWeather(fetchFn)
+    fetchJson(fetchFn, URLS.ovation)
   ]);
   return {
-    fetchedAt: now.toISOString(),
     currentKp: parseCurrentKp(currentKpRaw),
     kpForecast: parseKpForecast(kpForecastRaw),
     bz: parseBz(bzRaw),
     solarWind: parseSolarWind(speedRaw),
-    ovation: parseOvation(ovationRaw),
+    ovation: parseOvation(ovationRaw)
+  };
+}
+
+export async function fetchUpstreams(fetchFn = fetch, now = new Date()) {
+  const [spaceWeather, weather] = await Promise.all([
+    fetchSpaceWeather(fetchFn),
+    fetchWeather(fetchFn)
+  ]);
+  return {
+    fetchedAt: now.toISOString(),
+    ...spaceWeather,
     weather
   };
 }

@@ -17,7 +17,11 @@ import {
   validateSnapshot
 } from './contracts.mjs';
 import { buildSnapshot } from './build-snapshot.mjs';
-import { fetchUpstreams } from './upstreams.mjs';
+import { fetchSpaceWeather, fetchWeather } from './upstreams.mjs';
+import {
+  resolveWeatherCache,
+  validateWeatherCache
+} from './weather-cache.mjs';
 
 const MINUTE_MS = 60000;
 const HOUR_MS = 3600000;
@@ -53,29 +57,48 @@ function parseJson(text, label) {
   }
 }
 
-function validatePublicationTexts(catalogText, manifestText, snapshotText) {
+function validatePublicationTexts(catalogText, manifestText, snapshotText, weatherText) {
   if (Buffer.byteLength(snapshotText) >= MAX_SNAPSHOT_BYTES) {
     throw new Error('snapshot must be smaller than 262144 bytes');
   }
   const catalog = validateCatalog(parseJson(catalogText, 'catalog'));
   const manifest = validateManifest(parseJson(manifestText, 'manifest'));
   const snapshot = validateSnapshot(parseJson(snapshotText, 'snapshot'));
+  const weather = validateWeatherCache(
+    parseJson(weatherText, 'weather'),
+    new Date(snapshot.generatedAt)
+  );
   if (manifest.generatedAt !== snapshot.generatedAt) {
     throw new Error('manifest and snapshot generatedAt differ');
   }
   if (manifest.snapshotSha256 !== sha256(snapshotText)) {
     throw new Error('snapshot SHA-256 mismatch');
   }
-  return { catalog, manifest, snapshot };
+  if (snapshot.sources.weather.observedAt !== weather.fetchedAt) {
+    throw new Error('snapshot and weather fetchedAt differ');
+  }
+  return { catalog, manifest, snapshot, weather };
 }
 
 export async function verifyPublishedArtifacts(outputDir = DEFAULT_OUTPUT_DIR) {
-  const [catalogText, manifestText, snapshotText] = await Promise.all([
+  const [catalogText, manifestText, snapshotText, weatherText] = await Promise.all([
     readFile(resolve(outputDir, 'catalog.json'), 'utf8'),
     readFile(resolve(outputDir, 'manifest.json'), 'utf8'),
-    readFile(resolve(outputDir, 'snapshot.json'), 'utf8')
+    readFile(resolve(outputDir, 'snapshot.json'), 'utf8'),
+    readFile(resolve(outputDir, 'weather.json'), 'utf8')
   ]);
-  return validatePublicationTexts(catalogText, manifestText, snapshotText);
+  return validatePublicationTexts(catalogText, manifestText, snapshotText, weatherText);
+}
+
+async function readPreviousWeather(previousDir) {
+  try {
+    return parseJson(
+      await readFile(resolve(previousDir, 'weather.json'), 'utf8'),
+      'previous weather'
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 async function validPrevious(previousDir, now) {
@@ -127,7 +150,13 @@ async function replaceDirectory(stagingDir, outputDir) {
   }
 }
 
-async function publish(outputDir, catalogText, manifestText, snapshotText) {
+async function publish(
+  outputDir,
+  catalogText,
+  manifestText,
+  snapshotText,
+  weatherText
+) {
   const stagingDir = outputDir + '.staging-' + randomUUID();
   await mkdir(dirname(outputDir), { recursive: true });
   await mkdir(stagingDir);
@@ -136,7 +165,8 @@ async function publish(outputDir, catalogText, manifestText, snapshotText) {
       writeFile(resolve(stagingDir, '.gitkeep'), ''),
       writeFile(resolve(stagingDir, 'catalog.json'), catalogText),
       writeFile(resolve(stagingDir, 'manifest.json'), manifestText),
-      writeFile(resolve(stagingDir, 'snapshot.json'), snapshotText)
+      writeFile(resolve(stagingDir, 'snapshot.json'), snapshotText),
+      writeFile(resolve(stagingDir, 'weather.json'), weatherText)
     ]);
     await verifyPublishedArtifacts(stagingDir);
     await replaceDirectory(stagingDir, outputDir);
@@ -151,8 +181,21 @@ export async function runPipeline(options = {}) {
   const outputDir = resolve(options.outputDir ?? DEFAULT_OUTPUT_DIR);
   const previousDir = resolve(options.previousDir ?? outputDir);
   let snapshot;
+  let weatherCache;
   try {
-    const input = await fetchUpstreams(fetchFn, now);
+    const spaceWeather = await fetchSpaceWeather(fetchFn);
+    const previousWeather = await readPreviousWeather(previousDir);
+    const weatherResult = await resolveWeatherCache({
+      previous: previousWeather,
+      now,
+      fetchWeatherFn: () => fetchWeather(fetchFn)
+    });
+    weatherCache = weatherResult.cache;
+    const input = {
+      fetchedAt: weatherCache.fetchedAt,
+      ...spaceWeather,
+      weather: weatherCache.locations
+    };
     snapshot = buildSnapshot(input, now);
   } catch (error) {
     const previous = await validPrevious(previousDir, now);
@@ -177,8 +220,9 @@ export async function runPipeline(options = {}) {
     snapshotPath: '/v1/snapshot.json'
   };
   const manifestText = serialize(manifest);
-  validatePublicationTexts(catalogText, manifestText, snapshotText);
-  await publish(outputDir, catalogText, manifestText, snapshotText);
+  const weatherText = serialize(weatherCache);
+  validatePublicationTexts(catalogText, manifestText, snapshotText, weatherText);
+  await publish(outputDir, catalogText, manifestText, snapshotText, weatherText);
   return {
     status: 'published',
     generatedAt: snapshot.generatedAt,
