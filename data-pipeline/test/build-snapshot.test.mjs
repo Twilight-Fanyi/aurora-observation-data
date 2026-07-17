@@ -57,3 +57,17 @@ test('uses the end of the three-hour Kp interval for freshness', () => {
 
   assert.equal(snapshot.sources.kp.observedAt, '2026-07-14T12:00:00Z');
 });
+
+test('uses current Kp before the first forecast interval starts', () => {
+  const now = new Date('2026-01-15T12:10:00Z');
+  const input = makeNormalizedInput(now, { currentKp: 4 });
+  input.kpForecast = [{
+    timeUtc: '2026-01-15T15:00:00Z',
+    value: 8
+  }];
+
+  const snapshot = buildSnapshot(input, now);
+
+  assert.equal(snapshot.locations[0].hourly[0].kp, 4);
+  assert.equal(snapshot.locations[0].hourly[2].kp, 8);
+});

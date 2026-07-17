@@ -70,20 +70,20 @@ function closestByTime(values, targetMs, label) {
   return closest;
 }
 
-function forecastKpAt(values, targetMs) {
+function forecastKpAt(values, targetMs, currentKp) {
   const sorted = values
     .slice()
     .sort((left, right) => milliseconds(left.timeUtc, 'Kp forecast') -
       milliseconds(right.timeUtc, 'Kp forecast'));
-  let selected = sorted[0];
+  let selected = currentKp;
   for (const item of sorted) {
     if (milliseconds(item.timeUtc, 'Kp forecast') <= targetMs) {
-      selected = item;
+      selected = item.value;
     } else {
       break;
     }
   }
-  return selected.value;
+  return selected;
 }
 
 function reasons(input) {
@@ -148,7 +148,7 @@ function buildLocation(input, location, nowMs, firstHourMs) {
       90 * MINUTE_MS) {
       throw new Error('weather forecast has a gap for ' + location.id);
     }
-    const kp = forecastKpAt(input.kpForecast, targetMs);
+    const kp = forecastKpAt(input.kpForecast, targetMs, input.currentKp.value);
     const elevation = solarElevation(
       new Date(targetMs),
       location.latitude,
