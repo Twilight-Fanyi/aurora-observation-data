@@ -97,17 +97,17 @@ export function parseKpForecast(raw) {
   if (!Array.isArray(raw)) {
     throw new Error('Kp forecast response must be an array');
   }
-  const predicted = raw
-    .filter((item) => item.observed === 'predicted')
+  const forecast = raw
+    .filter((item) => item.observed === 'estimated' || item.observed === 'predicted')
     .map((item) => ({
       timeUtc: timestamp(item.time_tag, 'forecast Kp time_tag'),
       value: number(item.kp, 'forecast Kp')
     }))
     .sort((left, right) => Date.parse(left.timeUtc) - Date.parse(right.timeUtc));
-  if (predicted.length === 0) {
-    throw new Error('Kp forecast contains no predicted rows');
+  if (forecast.length === 0) {
+    throw new Error('Kp forecast contains no estimated or predicted rows');
   }
-  return predicted;
+  return forecast;
 }
 
 export function parseBz(raw) {

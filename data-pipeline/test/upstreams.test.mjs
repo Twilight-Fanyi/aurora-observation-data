@@ -101,15 +101,31 @@ test('normalizes NOAA current, forecast, solar wind, and OVATION products', () =
 
   assert.deepEqual(parseKpForecast([
     {
+      time_tag: '2026-07-14T12:00:00Z',
+      kp: '7.00',
+      observed: 'observed'
+    },
+    {
       time_tag: '2026-07-14T15:00:00Z',
       kp: '8.00',
-      observed: 'predicted',
+      observed: 'estimated',
       noaa_scale: 'G4'
+    },
+    {
+      time_tag: '2026-07-14T18:00:00Z',
+      kp: '6.00',
+      observed: 'predicted'
     }
-  ]), [{
-    timeUtc: '2026-07-14T15:00:00.000Z',
-    value: 8
-  }]);
+  ]), [
+    {
+      timeUtc: '2026-07-14T15:00:00.000Z',
+      value: 8
+    },
+    {
+      timeUtc: '2026-07-14T18:00:00.000Z',
+      value: 6
+    }
+  ]);
 
   assert.deepEqual(parseBz([
     { time_tag: '2026-07-14T13:25:00Z', bt: 10, bz_gsm: -9 }
