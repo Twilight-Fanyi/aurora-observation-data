@@ -9,6 +9,15 @@ function localTime(timeUtc, timeZone) {
   }).format(new Date(timeUtc));
 }
 
+function localDate(timeUtc, timeZone) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date(timeUtc));
+}
+
 export function makeNormalizedInput(
   now = new Date('2026-01-15T12:10:00Z'),
   options = {}
@@ -25,8 +34,10 @@ export function makeNormalizedInput(
       timeUtc: new Date(nowMs - 10 * 60000).toISOString(),
       value: options.currentKp ?? 8.3
     },
-    kpForecast: [1, 4, 7, 10, 13].map((offset) => ({
-      timeUtc: new Date(Math.ceil(nowMs / hourMs) * hourMs + (offset - 1) * hourMs).toISOString(),
+    kpForecast: Array.from({ length: 25 }, (_, index) => ({
+      timeUtc: new Date(
+        Math.floor(nowMs / (3 * hourMs)) * 3 * hourMs + index * 3 * hourMs
+      ).toISOString(),
       value: options.forecastKp ?? 8
     })),
     bz: {
@@ -49,10 +60,11 @@ export function makeNormalizedInput(
     weather: LOCATIONS.map((location) => ({
       id: location.id,
       timeZone: location.timeZone,
-      hourly: Array.from({ length: 48 }, (_, index) => {
+      hourly: Array.from({ length: 16 * 24 + 4 }, (_, index) => {
         const timeUtc = new Date(startMs + index * hourMs).toISOString();
         return {
           timeUtc,
+          localDate: localDate(timeUtc, location.timeZone),
           localTime: localTime(timeUtc, location.timeZone),
           cloudCover,
           visibilityKm

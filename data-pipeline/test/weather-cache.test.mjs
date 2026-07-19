@@ -16,6 +16,7 @@ function weather(fetchedAt) {
     timeZone: location.timeZone,
     hourly: [{
       timeUtc: fetchedAt,
+      localDate: fetchedAt.slice(0, 10),
       localTime: fetchedAt.slice(11, 16),
       cloudCover: 20,
       visibilityKm: 25

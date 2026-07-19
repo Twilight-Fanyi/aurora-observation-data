@@ -7,7 +7,8 @@ import {
   resolveLevel,
   scoreCurrent,
   scoreForecast,
-  selectBestWindow
+  selectBestWindow,
+  skyFactor
 } from './score.mjs';
 import { solarElevation } from './solar.mjs';
 import { nearestOvation } from './upstreams.mjs';
@@ -86,6 +87,110 @@ function forecastKpAt(values, targetMs, currentKp) {
   return selected;
 }
 
+function forecastCoverageEnd(values) {
+  return Math.max(...values.map((item) =>
+    milliseconds(item.timeUtc, 'Kp forecast'))) + 3 * HOUR_MS;
+}
+
+function weatherDateGroups(weather, nowMs) {
+  const firstWeatherHourMs = Math.floor(nowMs / HOUR_MS) * HOUR_MS;
+  const groups = [];
+  weather.hourly.forEach((hour) => {
+    if (milliseconds(hour.timeUtc, 'weather hour') < firstWeatherHourMs) {
+      return;
+    }
+    let group = groups.at(-1);
+    if (group === undefined || group.dateLocal !== hour.localDate) {
+      group = { dateLocal: hour.localDate, hours: [] };
+      groups.push(group);
+    }
+    group.hours.push(hour);
+  });
+  return groups;
+}
+
+function weatherDay(group, location) {
+  let selected;
+  let selectedScore = -1;
+  let darkHours = 0;
+  group.hours.forEach((hour) => {
+    const elevation = solarElevation(
+      new Date(milliseconds(hour.timeUtc, 'weather hour')),
+      location.latitude,
+      location.longitude
+    );
+    const darkness = darknessFactor(elevation);
+    if (darkness >= 0.5) {
+      darkHours += 1;
+    }
+    const score = skyFactor(hour.cloudCover, hour.visibilityKm) * darkness;
+    if (score > selectedScore) {
+      selected = hour;
+      selectedScore = score;
+    }
+  });
+  if (selected === undefined) {
+    throw new Error('weather day is empty for ' + location.id);
+  }
+  return {
+    dateLocal: group.dateLocal,
+    skyScore: Math.round(100 * Math.max(0, selectedScore)),
+    cloudCover: selected.cloudCover,
+    visibilityKm: selected.visibilityKm,
+    darkHours
+  };
+}
+
+function forecastHour(input, location, weatherHour, nowMs) {
+  const targetMs = milliseconds(weatherHour.timeUtc, 'weather hour');
+  const kp = forecastKpAt(input.kpForecast, targetMs, input.currentKp.value);
+  const elevation = solarElevation(
+    new Date(targetMs),
+    location.latitude,
+    location.longitude
+  );
+  return {
+    timeUtc: weatherHour.timeUtc,
+    localTime: weatherHour.localTime,
+    score: scoreForecast({
+      forecastKp: kp,
+      referenceKp: location.referenceKp,
+      cloudCover: weatherHour.cloudCover,
+      visibilityKm: weatherHour.visibilityKm,
+      solarElevation: elevation
+    }),
+    kp,
+    cloudCover: weatherHour.cloudCover,
+    visibilityKm: weatherHour.visibilityKm,
+    darkness: darknessFactor(elevation),
+    confidence: forecastConfidence({
+      kpAvailable: true,
+      weatherAvailable: true,
+      hourOffset: Math.max(1, Math.round((targetMs - nowMs) / HOUR_MS))
+    })
+  };
+}
+
+function auroraDay(input, group, location, nowMs, coverageEndMs) {
+  const hours = group.hours
+    .filter((hour) => milliseconds(hour.timeUtc, 'weather hour') <= coverageEndMs)
+    .map((hour) => forecastHour(input, location, hour, nowMs));
+  if (hours.length === 0) {
+    throw new Error('Kp forecast does not cover three local dates for ' + location.id);
+  }
+  const selected = hours.reduce((best, hour) =>
+    hour.score > best.score ? hour : best);
+  return {
+    dateLocal: group.dateLocal,
+    score: selected.score,
+    maxKp: Math.max(...hours.map((hour) => hour.kp)),
+    cloudCover: selected.cloudCover,
+    visibilityKm: selected.visibilityKm,
+    confidence: selected.confidence,
+    bestWindow: selectBestWindow(hours)
+  };
+}
+
 function reasons(input) {
   const values = [];
   if (darknessFactor(input.solarElevation) === 0) {
@@ -148,33 +253,17 @@ function buildLocation(input, location, nowMs, firstHourMs) {
       90 * MINUTE_MS) {
       throw new Error('weather forecast has a gap for ' + location.id);
     }
-    const kp = forecastKpAt(input.kpForecast, targetMs, input.currentKp.value);
-    const elevation = solarElevation(
-      new Date(targetMs),
-      location.latitude,
-      location.longitude
-    );
-    return {
-      timeUtc: new Date(targetMs).toISOString(),
-      localTime: targetWeather.localTime,
-      score: scoreForecast({
-        forecastKp: kp,
-        referenceKp: location.referenceKp,
-        cloudCover: targetWeather.cloudCover,
-        visibilityKm: targetWeather.visibilityKm,
-        solarElevation: elevation
-      }),
-      kp,
-      cloudCover: targetWeather.cloudCover,
-      visibilityKm: targetWeather.visibilityKm,
-      darkness: darknessFactor(elevation),
-      confidence: forecastConfidence({
-        kpAvailable: true,
-        weatherAvailable: true,
-        hourOffset: index + 1
-      })
-    };
+    return forecastHour(input, location, targetWeather, nowMs);
   });
+  const dateGroups = weatherDateGroups(weather, nowMs);
+  if (dateGroups.length < 16) {
+    throw new Error('weather forecast does not cover 16 local dates for ' + location.id);
+  }
+  const weatherDays = dateGroups.slice(0, 16).map((group) =>
+    weatherDay(group, location));
+  const coverageEndMs = forecastCoverageEnd(input.kpForecast);
+  const auroraDays = dateGroups.slice(0, 3).map((group) =>
+    auroraDay(input, group, location, nowMs, coverageEndMs));
   return {
     id: location.id,
     localTimeZone: location.timeZone,
@@ -206,7 +295,9 @@ function buildLocation(input, location, nowMs, firstHourMs) {
       })
     },
     hourly,
-    bestWindow: selectBestWindow(hourly)
+    bestWindow: selectBestWindow(hourly),
+    auroraDays,
+    weatherDays
   };
 }
 

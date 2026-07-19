@@ -25,6 +25,33 @@ function hourly(index) {
   };
 }
 
+function auroraDay(index) {
+  return {
+    dateLocal: '2026-07-' + String(14 + index).padStart(2, '0'),
+    score: 72,
+    maxKp: 7,
+    cloudCover: 13,
+    visibilityKm: 25,
+    confidence: 80,
+    bestWindow: {
+      startUtc: new Date(Date.parse('2026-07-14T14:00:00Z') + index * 86400000)
+        .toISOString(),
+      endUtc: new Date(Date.parse('2026-07-14T16:00:00Z') + index * 86400000)
+        .toISOString()
+    }
+  };
+}
+
+function weatherDay(index) {
+  return {
+    dateLocal: '2026-07-' + String(14 + index).padStart(2, '0'),
+    skyScore: 82,
+    cloudCover: 13,
+    visibilityKm: 25,
+    darkHours: 8
+  };
+}
+
 function location(locationDefinition) {
   return {
     id: locationDefinition.id,
@@ -47,7 +74,9 @@ function location(locationDefinition) {
     bestWindow: {
       startUtc: '2026-07-14T14:00:00Z',
       endUtc: '2026-07-14T16:00:00Z'
-    }
+    },
+    auroraDays: Array.from({ length: 3 }, (_, index) => auroraDay(index)),
+    weatherDays: Array.from({ length: 16 }, (_, index) => weatherDay(index))
   };
 }
 
@@ -110,4 +139,8 @@ test('rejects incomplete, oversized, and out-of-range snapshots', () => {
   const invalidScore = snapshot();
   invalidScore.locations[0].current.score = 101;
   assert.throws(() => validateSnapshot(invalidScore), /snapshot invalid/);
+
+  const shortWeather = snapshot();
+  shortWeather.locations[0].weatherDays.pop();
+  assert.throws(() => validateSnapshot(shortWeather), /snapshot invalid/);
 });
