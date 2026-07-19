@@ -57,6 +57,30 @@ test('refreshes weather at fifteen minutes', async () => {
   assert.equal(result.cache.fetchedAt, next);
 });
 
+test('refreshes a legacy cache without local dates immediately', async () => {
+  const now = new Date('2026-07-14T12:10:00Z');
+  const fetchedAt = '2026-07-14T12:05:00.000Z';
+  const legacy = createWeatherCache(weather(fetchedAt), fetchedAt);
+  legacy.locations.forEach((location) => {
+    location.hourly.forEach((hour) => {
+      delete hour.localDate;
+    });
+  });
+  let calls = 0;
+  const result = await resolveWeatherCache({
+    previous: legacy,
+    now,
+    fetchWeatherFn: async () => {
+      calls += 1;
+      return weather(now.toISOString());
+    }
+  });
+
+  assert.equal(calls, 1);
+  assert.equal(result.refreshed, true);
+  assert.equal(result.cache.locations[0].hourly[0].localDate, '2026-07-14');
+});
+
 test('falls back to valid weather for no more than three hours', async () => {
   const fetchedAt = '2026-07-16T04:00:00.000Z';
   const previous = createWeatherCache(weather(fetchedAt), fetchedAt);
