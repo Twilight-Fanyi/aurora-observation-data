@@ -52,6 +52,19 @@ function weatherDay(index) {
   };
 }
 
+function solarOutlook() {
+  return {
+    issuedAt: '2026-07-14T00:00:00Z',
+    days: Array.from({ length: 27 }, (_, index) => ({
+      dateUtc: new Date(Date.parse('2026-07-14T00:00:00Z') + index * 86400000)
+        .toISOString().slice(0, 10),
+      radioFlux: 110 + index,
+      planetaryA: 5 + index % 12,
+      maxKp: 2 + index % 4
+    }))
+  };
+}
+
 function location(locationDefinition) {
   return {
     id: locationDefinition.id,
@@ -90,6 +103,7 @@ function snapshot() {
       ovation: source(),
       weather: source()
     },
+    solarOutlook: solarOutlook(),
     locations: LOCATIONS.map(location)
   };
 }
@@ -143,4 +157,8 @@ test('rejects incomplete, oversized, and out-of-range snapshots', () => {
   const shortWeather = snapshot();
   shortWeather.locations[0].weatherDays.pop();
   assert.throws(() => validateSnapshot(shortWeather), /snapshot invalid/);
+
+  const shortSolarOutlook = snapshot();
+  shortSolarOutlook.solarOutlook.days.pop();
+  assert.throws(() => validateSnapshot(shortSolarOutlook), /snapshot invalid/);
 });

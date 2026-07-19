@@ -6,7 +6,13 @@ export const URLS = Object.freeze({
   bz: 'https://services.swpc.noaa.gov/products/summary/solar-wind-mag-field.json',
   speed: 'https://services.swpc.noaa.gov/products/summary/solar-wind-speed.json',
   ovation: 'https://services.swpc.noaa.gov/json/ovation_aurora_latest.json',
+  solarOutlook: 'https://services.swpc.noaa.gov/text/27-day-outlook.txt',
   weather: 'https://api.open-meteo.com/v1/forecast'
+});
+
+const MONTH_NUMBERS = Object.freeze({
+  Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
+  Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12'
 });
 
 function number(value, label) {
@@ -156,6 +162,53 @@ export function parseOvation(raw) {
   };
 }
 
+export function parseSolarOutlook(raw) {
+  if (typeof raw !== 'string') {
+    throw new Error('solar outlook response must be text');
+  }
+  const issued = raw.match(
+    /^:Issued:\s+(\d{4})\s+([A-Z][a-z]{2})\s+(\d{2})\s+(\d{2})(\d{2})\s+UTC$/m
+  );
+  const issuedMonth = issued === null ? undefined : MONTH_NUMBERS[issued[2]];
+  if (issued === null || issuedMonth === undefined) {
+    throw new Error('solar outlook issued time is malformed');
+  }
+  const issuedAt = new Date(Date.UTC(
+    Number(issued[1]),
+    Number(issuedMonth) - 1,
+    Number(issued[3]),
+    Number(issued[4]),
+    Number(issued[5])
+  )).toISOString();
+  const days = [];
+  const rowPattern = /^(\d{4})\s+([A-Z][a-z]{2})\s+(\d{2})\s+(\d+)\s+(\d+)\s+(\d+(?:\.\d+)?)$/gm;
+  let match;
+  while ((match = rowPattern.exec(raw)) !== null) {
+    const month = MONTH_NUMBERS[match[2]];
+    if (month === undefined) {
+      throw new Error('solar outlook month is malformed');
+    }
+    const radioFlux = number(match[4], 'solar outlook radio flux');
+    const planetaryA = number(match[5], 'solar outlook planetary A');
+    const maxKp = number(match[6], 'solar outlook Kp');
+    if (radioFlux < 0 || radioFlux > 1000 ||
+      planetaryA < 0 || planetaryA > 400 || maxKp < 0 || maxKp > 9) {
+      throw new Error('solar outlook value is outside its allowed range');
+    }
+    days.push({
+      dateUtc: match[1] + '-' + month + '-' + match[3],
+      radioFlux,
+      planetaryA,
+      maxKp
+    });
+  }
+  if (days.length !== 27 || days.some((day, index) =>
+    index > 0 && day.dateUtc <= days[index - 1].dateUtc)) {
+    throw new Error('solar outlook must contain 27 ordered days');
+  }
+  return { issuedAt, days };
+}
+
 function localTimeToUtc(value, offsetSeconds) {
   const isoLocal = value.length === 16 ? value + ':00Z' : value + 'Z';
   const localAsUtc = Date.parse(isoLocal);
@@ -249,6 +302,42 @@ async function fetchJson(fetchFn, url) {
     }
   }
   throw lastError;
+}
+
+async function fetchTextOnce(fetchFn, url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetchFn(url, {
+      signal: controller.signal,
+      headers: {
+        accept: 'text/plain',
+        'user-agent': 'Aurora/1.0 public-data-pipeline'
+      }
+    });
+    if (!response.ok) {
+      throw new Error('HTTP ' + response.status + ' for ' + url);
+    }
+    return await response.text();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchText(fetchFn, url) {
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await fetchTextOnce(fetchFn, url);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+export async function fetchSolarOutlook(fetchFn = fetch) {
+  return parseSolarOutlook(await fetchText(fetchFn, URLS.solarOutlook));
 }
 
 export async function fetchWeather(fetchFn = fetch, locations = LOCATIONS) {
