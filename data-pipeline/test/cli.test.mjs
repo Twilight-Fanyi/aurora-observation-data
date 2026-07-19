@@ -33,6 +33,19 @@ function rawResponses(now, malformedWeather = false) {
       coordinates: input.ovation.grid
     }]
   ]);
+  const solarRows = input.solarOutlook.days.map((day) => {
+    const date = new Date(day.dateUtc + 'T00:00:00Z');
+    const month = date.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+    return date.getUTCFullYear().toString() + ' ' + month + ' ' +
+      date.getUTCDate().toString().padStart(2, '0') + '     ' +
+      day.radioFlux.toString() + '          ' + day.planetaryA.toString() +
+      '          ' + day.maxKp.toString();
+  });
+  const solarOutlook = ':Product: 27-day Space Weather Outlook Table 27DO.txt\n' +
+    ':Issued: ' + now.getUTCFullYear().toString() + ' ' +
+    now.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' }) + ' ' +
+    now.getUTCDate().toString().padStart(2, '0') + ' 0000 UTC\n' +
+    solarRows.join('\n') + '\n';
   const weather = malformedWeather ? [] : input.weather.map((item, index) => ({
     latitude: LOCATIONS[index].latitude,
     longitude: LOCATIONS[index].longitude,
@@ -44,14 +57,19 @@ function rawResponses(now, malformedWeather = false) {
       visibility: item.hourly.map((hour) => hour.visibilityKm * 1000)
     }
   }));
-  return { responses, weather };
+  return { responses, weather, solarOutlook };
 }
 
 function fakeFetch(now, malformedWeather = false) {
   const raw = rawResponses(now, malformedWeather);
   let weatherCalls = 0;
+  let solarOutlookCalls = 0;
   const fetchFn = async (url) => {
     const key = String(url);
+    if (key === URLS.solarOutlook) {
+      solarOutlookCalls += 1;
+      return new Response(raw.solarOutlook, { status: 200 });
+    }
     if (key.startsWith(URLS.weather)) {
       weatherCalls += 1;
       const requested = new URL(key).searchParams.get('latitude')
@@ -82,6 +100,9 @@ function fakeFetch(now, malformedWeather = false) {
   };
   Object.defineProperty(fetchFn, 'weatherCalls', {
     get: () => weatherCalls
+  });
+  Object.defineProperty(fetchFn, 'solarOutlookCalls', {
+    get: () => solarOutlookCalls
   });
   return fetchFn;
 }
@@ -114,7 +135,9 @@ test('publishes a validated atomic artifact with exact hash and freshness times'
 
     assert.equal(result.status, 'published');
     assert.equal(fetchFn.weatherCalls, 5);
+    assert.equal(fetchFn.solarOutlookCalls, 1);
     assert.equal(snapshot.locations.length, 50);
+    assert.equal(snapshot.solarOutlook.days.length, 27);
     assert.equal(weather.fetchedAt, now.toISOString());
     assert.equal(snapshot.sources.weather.observedAt, weather.fetchedAt);
     assert.equal(manifest.generatedAt, now.toISOString());
@@ -152,6 +175,7 @@ test('reuses weather younger than fifteen minutes while publishing fresh NOAA da
     assert.equal(result.status, 'published');
     assert.equal(result.generatedAt, nextNow.toISOString());
     assert.equal(fetchFn.weatherCalls, 0);
+    assert.equal(fetchFn.solarOutlookCalls, 0);
     assert.equal(weather.fetchedAt, now.toISOString());
     assert.equal(snapshot.sources.weather.observedAt, now.toISOString());
   } finally {

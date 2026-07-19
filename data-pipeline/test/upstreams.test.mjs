@@ -11,9 +11,24 @@ import {
   parseCurrentKp,
   parseKpForecast,
   parseOvation,
+  parseSolarOutlook,
   parseSolarWind,
   parseWeather
 } from '../src/upstreams.mjs';
+
+function solarOutlookText() {
+  const rows = Array.from({ length: 27 }, (_, index) => {
+    const date = new Date(Date.parse('2026-07-13T00:00:00Z') + index * 86400000);
+    const month = date.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+    return date.getUTCFullYear().toString() + ' ' + month + ' ' +
+      date.getUTCDate().toString().padStart(2, '0') + '     ' +
+      (110 + index).toString() + '          ' + (5 + index % 12).toString() +
+      '          ' + (2 + index % 4).toString();
+  });
+  return ':Product: 27-day Space Weather Outlook Table 27DO.txt\n' +
+    ':Issued: 2026 Jul 13 2256 UTC\n' +
+    rows.join('\n') + '\n';
+}
 
 test('builds five Open-Meteo requests with ten ordered coordinates each', () => {
   assert.equal(WEATHER_BATCH_SIZE, 10);
@@ -150,6 +165,27 @@ test('normalizes NOAA current, forecast, solar wind, and OVATION products', () =
     forecastTime: '2026-07-14T13:40:00.000Z',
     grid: [[122, 53, 32]]
   });
+});
+
+test('normalizes the NOAA 27-day global solar activity outlook', () => {
+  const outlook = parseSolarOutlook(solarOutlookText());
+
+  assert.equal(outlook.issuedAt, '2026-07-13T22:56:00.000Z');
+  assert.equal(outlook.days.length, 27);
+  assert.deepEqual(outlook.days[0], {
+    dateUtc: '2026-07-13',
+    radioFlux: 110,
+    planetaryA: 5,
+    maxKp: 2
+  });
+  assert.equal(outlook.days[26].dateUtc, '2026-08-08');
+});
+
+test('rejects incomplete NOAA 27-day outlooks', () => {
+  assert.throws(
+    () => parseSolarOutlook(solarOutlookText().split('\n').slice(0, -2).join('\n')),
+    /27 ordered days/
+  );
 });
 
 test('treats timezone-less NOAA product timestamps as UTC', () => {

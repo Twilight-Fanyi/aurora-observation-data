@@ -332,5 +332,11 @@ export function buildSnapshot(input, now = new Date()) {
     locations: LOCATIONS.map((location) =>
       buildLocation(input, location, nowMs, firstHourMs))
   };
+  if (input.solarOutlook !== undefined) {
+    snapshot.solarOutlook = {
+      issuedAt: input.solarOutlook.issuedAt,
+      days: input.solarOutlook.days
+    };
+  }
   return validateSnapshot(snapshot);
 }

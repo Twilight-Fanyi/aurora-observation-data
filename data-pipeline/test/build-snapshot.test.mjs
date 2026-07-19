@@ -10,6 +10,8 @@ test('builds a schema-valid 50-location snapshot with 12 future hours', () => {
   const snapshot = buildSnapshot(makeNormalizedInput(now), now);
   assert.doesNotThrow(() => validateSnapshot(snapshot));
   assert.equal(snapshot.locations.length, 50);
+  assert.equal(snapshot.solarOutlook.days.length, 27);
+  assert.equal(snapshot.solarOutlook.days[0].radioFlux, 110);
   for (const location of snapshot.locations) {
     assert.equal(location.hourly.length, 12);
     assert.equal(location.auroraDays.length, 3);

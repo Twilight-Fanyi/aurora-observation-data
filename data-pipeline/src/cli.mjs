@@ -17,7 +17,15 @@ import {
   validateSnapshot
 } from './contracts.mjs';
 import { buildSnapshot } from './build-snapshot.mjs';
-import { fetchSpaceWeather, fetchWeather } from './upstreams.mjs';
+import {
+  fetchSolarOutlook,
+  fetchSpaceWeather,
+  fetchWeather
+} from './upstreams.mjs';
+import {
+  resolveSolarOutlookCache,
+  validateSolarOutlookCache
+} from './solar-outlook-cache.mjs';
 import {
   resolveWeatherCache,
   validateWeatherCache
@@ -68,6 +76,9 @@ function validatePublicationTexts(catalogText, manifestText, snapshotText, weath
     parseJson(weatherText, 'weather'),
     new Date(snapshot.generatedAt)
   );
+  if (weather.solarOutlook !== undefined) {
+    validateSolarOutlookCache(weather.solarOutlook, new Date(snapshot.generatedAt));
+  }
   if (manifest.generatedAt !== snapshot.generatedAt) {
     throw new Error('manifest and snapshot generatedAt differ');
   }
@@ -190,11 +201,20 @@ export async function runPipeline(options = {}) {
       now,
       fetchWeatherFn: () => fetchWeather(fetchFn)
     });
-    weatherCache = weatherResult.cache;
+    const solarOutlook = await resolveSolarOutlookCache({
+      previous: previousWeather?.solarOutlook,
+      now,
+      fetchOutlookFn: () => fetchSolarOutlook(fetchFn)
+    });
+    weatherCache = {
+      ...weatherResult.cache,
+      ...(solarOutlook === undefined ? {} : { solarOutlook })
+    };
     const input = {
       fetchedAt: weatherCache.fetchedAt,
       ...spaceWeather,
-      weather: weatherCache.locations
+      weather: weatherCache.locations,
+      solarOutlook
     };
     snapshot = buildSnapshot(input, now);
   } catch (error) {
