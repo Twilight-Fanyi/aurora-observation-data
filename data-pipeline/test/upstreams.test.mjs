@@ -37,7 +37,7 @@ test('builds five Open-Meteo requests with ten ordered coordinates each', () => 
         .map((location) => location.longitude)
     );
     assert.equal(url.searchParams.get('hourly'), 'cloud_cover,visibility');
-    assert.equal(url.searchParams.get('forecast_days'), '2');
+    assert.equal(url.searchParams.get('forecast_days'), '16');
   });
 });
 
@@ -187,6 +187,7 @@ test('normalizes batched local weather timestamps to UTC', () => {
   assert.equal(weather[0].id, 'mohe-beiji');
   assert.deepEqual(weather[0].hourly[0], {
     timeUtc: '2026-07-14T13:00:00.000Z',
+    localDate: '2026-07-14',
     localTime: '14:00',
     cloudCover: 13,
     visibilityKm: 25

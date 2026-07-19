@@ -44,7 +44,9 @@ export function validateWeatherCache(value, now = new Date()) {
     let previousTime = -Infinity;
     location.hourly.forEach((hour) => {
       const time = timestamp(hour?.timeUtc, 'weather hour');
-      if (time <= previousTime || !/^\d{2}:\d{2}$/.test(hour.localTime)) {
+      if (time <= previousTime ||
+        (hour.localDate !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(hour.localDate)) ||
+        !/^\d{2}:\d{2}$/.test(hour.localTime)) {
         throw new Error('weather cache hours must be ordered');
       }
       previousTime = time;

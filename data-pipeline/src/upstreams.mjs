@@ -57,7 +57,7 @@ export function buildWeatherUrl(locations) {
   url.searchParams.set('longitude', locations.map((location) => location.longitude).join(','));
   url.searchParams.set('hourly', 'cloud_cover,visibility');
   url.searchParams.set('timezone', 'auto');
-  url.searchParams.set('forecast_days', '2');
+  url.searchParams.set('forecast_days', '16');
   return url.toString();
 }
 
@@ -187,6 +187,7 @@ export function parseWeather(raw, locations = LOCATIONS) {
       timeZone: item.timezone || locations[locationIndex].timeZone,
       hourly: time.map((localTime, hourIndex) => ({
         timeUtc: localTimeToUtc(localTime, offsetSeconds),
+        localDate: localTime.slice(0, 10),
         localTime: localTime.slice(11, 16),
         cloudCover: number(cloud[hourIndex], 'cloud cover'),
         visibilityKm: number(visibility[hourIndex], 'visibility') / 1000

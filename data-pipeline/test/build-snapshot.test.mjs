@@ -12,13 +12,31 @@ test('builds a schema-valid 50-location snapshot with 12 future hours', () => {
   assert.equal(snapshot.locations.length, 50);
   for (const location of snapshot.locations) {
     assert.equal(location.hourly.length, 12);
+    assert.equal(location.auroraDays.length, 3);
+    assert.equal(location.weatherDays.length, 16);
     assert.ok(location.current.score >= 0 && location.current.score <= 100);
     assert.ok(location.current.reasonCodes.length <= 3);
+    assert.ok(location.auroraDays.every((day) => day.maxKp === 8));
   }
   assert.notEqual(
     snapshot.locations[0].hourly[0].localTime,
     snapshot.locations[10].hourly[0].localTime
   );
+});
+
+test('keeps long-range weather separate from the three-day aurora score', () => {
+  const now = new Date('2026-01-15T12:10:00Z');
+  const snapshot = buildSnapshot(makeNormalizedInput(now, {
+    forecastKp: 8,
+    cloudCover: 15,
+    visibilityKm: 30
+  }), now);
+  const location = snapshot.locations[0];
+
+  assert.ok(location.auroraDays.some((day) => day.score > 0));
+  assert.equal(location.weatherDays.length, 16);
+  assert.equal('score' in location.weatherDays[15], false);
+  assert.equal(location.weatherDays[15].cloudCover, 15);
 });
 
 test('thick cloud suppresses scores and produces an explanatory reason', () => {
@@ -61,10 +79,11 @@ test('uses the end of the three-hour Kp interval for freshness', () => {
 test('uses current Kp before the first forecast interval starts', () => {
   const now = new Date('2026-01-15T12:10:00Z');
   const input = makeNormalizedInput(now, { currentKp: 4 });
-  input.kpForecast = [{
-    timeUtc: '2026-01-15T15:00:00Z',
+  input.kpForecast = Array.from({ length: 25 }, (_, index) => ({
+    timeUtc: new Date(Date.parse('2026-01-15T15:00:00Z') + index * 3 * 3600000)
+      .toISOString(),
     value: 8
-  }];
+  }));
 
   const snapshot = buildSnapshot(input, now);
 
