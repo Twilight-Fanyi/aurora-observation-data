@@ -66,11 +66,19 @@ export function createWeatherCache(weather, fetchedAt) {
   }, new Date(fetchedAt));
 }
 
+function supportsDailyForecast(cache) {
+  return cache.locations.every((location) =>
+    location.hourly.every((hour) => /^\d{4}-\d{2}-\d{2}$/.test(hour.localDate)));
+}
+
 export async function resolveWeatherCache({ previous, now, fetchWeatherFn }) {
   let cached;
   try {
     cached = validateWeatherCache(previous, now);
   } catch {
+    cached = undefined;
+  }
+  if (cached !== undefined && !supportsDailyForecast(cached)) {
     cached = undefined;
   }
 
